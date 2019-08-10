@@ -104,7 +104,7 @@ variable wait_for_instances {
 }
 
 variable update_strategy {
-  description = "The strategy to apply when the instance template changes."
+  description = "If the instance_template resource is modified, a value of 'NONE' will prevent any of the managed instances from being restarted by Terraform. A value of 'REPLACE' will restart all of the instances at once. This field is only present in the google provider."
   default     = "NONE"
 }
 
@@ -132,6 +132,17 @@ variable instance_labels {
   description = "Labels added to instances."
   type        = "map"
   default     = {}
+}
+
+variable template {
+  description = "The instance template self_link to associate with the mig.  If provided, overrides all input variables associated with the default instance template managed by this module."
+  type        = "string"
+  default     = ""
+}
+
+variable enable_custom_template {
+  description = "If true, do not manage the default instance_template within the module, use the one provided by the tempalte variable."
+  default     = false
 }
 
 variable target_pools {

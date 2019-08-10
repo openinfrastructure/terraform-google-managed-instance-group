@@ -15,7 +15,7 @@
  */
 
 resource "google_compute_instance_template" "default" {
-  count       = "${var.module_enabled ? 1 : 0}"
+  count       = "${var.module_enabled && ! var.enable_custom_template ? 1 : 0}"
   project     = "${var.project}"
   name_prefix = "default-"
 
@@ -31,7 +31,7 @@ resource "google_compute_instance_template" "default" {
     network            = "${var.subnetwork == "" ? var.network : ""}"
     subnetwork         = "${var.subnetwork}"
     access_config      = ["${var.access_config}"]
-    address            = "${var.network_ip}"
+    network_ip         = "${var.network_ip}"
     subnetwork_project = "${var.subnetwork_project == "" ? var.project : var.subnetwork_project}"
   }
 
@@ -68,6 +68,7 @@ resource "google_compute_instance_template" "default" {
 }
 
 resource "google_compute_instance_group_manager" "default" {
+  provider = "google-beta"
   count              = "${var.module_enabled && var.zonal ? 1 : 0}"
   project            = "${var.project}"
   name               = "${var.name}"
@@ -76,13 +77,15 @@ resource "google_compute_instance_group_manager" "default" {
 
   base_instance_name = "${var.name}"
 
-  instance_template = "${google_compute_instance_template.default.self_link}"
-
   zone = "${var.zone}"
 
-  update_strategy = "${var.update_strategy}"
-
-  rolling_update_policy = ["${var.rolling_update_policy}"]
+  update_policy = {
+    type                  = "PROACTIVE"
+    minimal_action        = "REPLACE"
+    max_surge_percent     = 20
+    max_unavailable_fixed = 2
+    min_ready_sec         = 50
+  }
 
   target_pools = ["${var.target_pools}"]
 
@@ -98,6 +101,20 @@ resource "google_compute_instance_group_manager" "default" {
   auto_healing_policies = {
     health_check      = "${var.http_health_check ? element(concat(google_compute_health_check.mig-health-check.*.self_link, list("")), 0) : ""}"
     initial_delay_sec = "${var.hc_initial_delay}"
+  }
+
+  version {
+    name              = "ip-router-mig"
+    instance_template = "${local.template}"
+  }
+
+  version {
+    name              = "ip-router-mig-canary"
+    instance_template = "${local.template}"
+
+    target_size {
+      fixed = 1
+    }
   }
 
   provisioner "local-exec" {
@@ -140,6 +157,7 @@ locals {
   }
 
   dependency_id = "${element(concat(null_resource.region_dummy_dependency.*.id, list("disabled")), 0)}"
+  template      = "${var.enable_custom_template ? var.template : google_compute_instance_template.default.self_link}"
 }
 
 resource "google_compute_region_instance_group_manager" "default" {
@@ -151,7 +169,7 @@ resource "google_compute_region_instance_group_manager" "default" {
 
   base_instance_name = "${var.name}"
 
-  instance_template = "${google_compute_instance_template.default.self_link}"
+  instance_template = "${local.template}"
 
   region = "${var.region}"
 
